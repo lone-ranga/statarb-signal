@@ -1,4 +1,5 @@
-# main.py – StatArb Signal Server (master → 1000+ subscribers, <4 ms latency)
+# main.py – StatArb Signal Server (fixed for Render port detection)
+import os
 from fastapi import FastAPI, HTTPException, Request
 import uvicorn
 import json
@@ -44,6 +45,10 @@ def verify(payload: str, sig: str) -> bool:
     expected = hmac.new(MASTER_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, sig)
 
+@app.get("/")
+async def root():
+    return {"status": "StatArb Signal Server Live", "endpoints": ["/master-signal", "/ws/{client_id}"]}
+
 @app.post("/master-signal")
 async def master_signal(request: Request, data: dict):
     payload = data.get("payload")
@@ -66,4 +71,5 @@ async def ws_endpoint(websocket: WebSocket, client_id: str):
         manager.disconnect(client_id)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 10000))  # ← Render dynamic port fix
+    uvicorn.run(app, host="0.0.0.0", port=port)
