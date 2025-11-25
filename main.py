@@ -74,14 +74,19 @@ async def master_signal(request: Request, data: dict):
         logger.warning(f"Invalid signature from {request.client.host}")
         raise HTTPException(401, "Invalid signature")
     
-    signal = json.loads(payload)
-    logger.info(f"SIGNAL RECEIVED → {signal['action']} {signal.get('symbol', '')} | "
-                f"Z={signal.get('z_score', 'N/A'):.3f} | "
-                f"From IP: {request.client.host}")
+    try:
+        signal = json.loads(payload)
+        action = signal.get("action", "UNKNOWN")
+        symbol = signal.get("symbol", "N/A")
+        z_info = f" Z={signal.get('z_score','?')}" if 'z_score' in signal else ""
+        logger.info(f"SIGNAL → {action} {symbol}{z_info} | Ticket={signal.get('ticket')} | Clients={len(manager.clients)}")
+    except:
+        logger.info(f"SIGNAL → RAW {payload[:100]}")
     
     await manager.broadcast(payload)
     return {"status": "ok", "clients": len(manager.clients)}
     
+
 @app.websocket("/ws/{client_id}")
 async def ws_endpoint(websocket: WebSocket, client_id: str):
     await manager.connect(client_id, websocket)
