@@ -5,8 +5,12 @@ import uvicorn
 import json
 import hmac
 import hashlib
+import logging
 from typing import Dict
 from fastapi import WebSocket, WebSocketDisconnect
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="StatArb Signal Server")
 
@@ -49,16 +53,35 @@ def verify(payload: str, sig: str) -> bool:
 async def root():
     return {"status": "StatArb Signal Server Live", "endpoints": ["/master-signal", "/ws/{client_id}"]}
 
+@app.post("/webhook")
+async def legacy_webhook(request: Request):
+    body = await request.body()
+    payload = body.decode()
+    try:
+        signal = json.loads(payload)
+        logger.info(f"LEGACY WEBHOOK → {signal}")
+        await manager.broadcast(json.dumps(signal))
+    except:
+        logger.warning(f"Bad legacy webhook payload: {payload}")
+    return {"status": "ok"}
+    
 @app.post("/master-signal")
 async def master_signal(request: Request, data: dict):
     payload = data.get("payload")
     sig = data.get("sig")
+    
     if not payload or not sig or not verify(payload, sig):
+        logger.warning(f"Invalid signature from {request.client.host}")
         raise HTTPException(401, "Invalid signature")
-    print(f"MASTER → {json.loads(payload)['action']} {json.loads(payload)['symbol']}")
+    
+    signal = json.loads(payload)
+    logger.info(f"SIGNAL RECEIVED → {signal['action']} {signal.get('symbol', '')} | "
+                f"Z={signal.get('z_score', 'N/A'):.3f} | "
+                f"From IP: {request.client.host}")
+    
     await manager.broadcast(payload)
-    return {"status": "ok"}
-
+    return {"status": "ok", "clients": len(manager.clients)}
+    
 @app.websocket("/ws/{client_id}")
 async def ws_endpoint(websocket: WebSocket, client_id: str):
     await manager.connect(client_id, websocket)
